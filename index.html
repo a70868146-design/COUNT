@@ -107,6 +107,7 @@
     max-width: 100%;
     max-height: 100%;
     width: auto; height: auto;
+    object-fit: contain;
   }
   /* 四角取景框装饰 */
   .stage::before {
@@ -983,6 +984,14 @@
 
   /* ===== 初始化 ===== */
   (function init() {
+    // 双保险：原始视频元素不占任何视觉空间（只作为画布的取帧源）
+    el.cam.style.position = "fixed";
+    el.cam.style.left = "-9999px";
+    el.cam.style.top = "0";
+    el.cam.style.width = "1px";
+    el.cam.style.height = "1px";
+    el.cam.style.opacity = "0";
+    el.cam.style.pointerEvents = "none";
     refreshDevices();
     loadModel();
   })();
