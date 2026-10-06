@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>点数相机 · 对准一堆物品，自动数个数</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='10' width='52' height='44' rx='10' fill='%230e1526' stroke='%233ee6b0' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='13' fill='none' stroke='%235b8cff' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='3' fill='%233ee6b0'/%3E%3C/svg%3E">
+<style>
+  /* ===== 基础与变量 ===== */
+  :root {
+    --bg-0: #0a0f1e;
+    --bg-1: #0e1526;
+    --panel: #121a30;
+    --panel-2: #16203a;
+    --line: rgba(147,160,192,.14);
+    --line-strong: rgba(147,160,192,.28);
+    --txt-0: #eaf0ff;
+    --txt-1: #aab6d4;
+    --txt-2: #7d89ab;
+    --accent: #3ee6b0;
+    --accent-dim: rgba(62,230,176,.14);
+    --blue: #5b8cff;
+    --amber: #ffb74d;
+    --red: #ff6b6b;
+    --radius: 16px;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", Consolas, "Courier New", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { height: 100%; }
+  body {
+    min-height: 100vh;
+    font-family: var(--sans);
+    color: var(--txt-0);
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(91,140,255,.10), transparent 60%),
+      radial-gradient(900px 500px at 110% 10%, rgba(62,230,176,.07), transparent 55%),
+      var(--bg-0);
+    display: flex;
+    flex-direction: column;
+    max-width: 540px;
+    margin: 0 auto;
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+    box-shadow: 0 0 70px rgba(0,0,0,.45);
+  }
+  button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+  ::selection { background: rgba(62,230,176,.25); }
+
+  /* ===== 顶栏 ===== */
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(10,15,30,.6);
+    backdrop-filter: blur(8px);
+    position: sticky; top: 0; z-index: 20;
+  }
+  .brand-mark {
+    width: 34px; height: 34px; flex: none;
+    display: grid; place-items: center;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(62,230,176,.18), rgba(91,140,255,.18));
+    border: 1px solid var(--line-strong);
+  }
+  .brand-mark svg { width: 20px; height: 20px; }
+  .brand h1 { font-size: 17px; font-weight: 700; letter-spacing: .5px; }
+  .brand p { font-size: 12px; color: var(--txt-2); margin-top: 1px; }
+  .header-note {
+    margin-left: auto; font-size: 12px; color: var(--txt-2);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .header-note .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); }
+
+  /* ===== 主布局 ===== */
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 14px 16px;
+    min-height: 0;
+  }
+
+  /* ===== 视频区 ===== */
+  .stage {
+    position: relative;
+    background: #070b16;
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+    overflow: hidden;
+    min-height: 46vh;
+    max-height: 58vh;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 18px 50px rgba(0,0,0,.35);
+  }
+  .stage canvas {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    width: auto; height: auto;
+    object-fit: contain;
+  }
+  /* 四角取景框装饰 */
+  .stage::before {
+    content: ""; position: absolute; inset: 14px; pointer-events: none; z-index: 3;
+    border-radius: 10px;
+    background:
+      linear-gradient(var(--accent), var(--accent)) 0 0 / 26px 3px,
+      linear-gradient(var(--accent), var(--accent)) 0 0 / 3px 26px,
+      linear-gradient(var(--accent), var(--accent)) 100% 0 / 26px 3px,
+      linear-gradient(var(--accent), var(--accent)) 100% 0 / 3px 26px,
+      linear-gradient(var(--accent), var(--accent)) 0 100% / 26px 3px,
+      linear-gradient(var(--accent), var(--accent)) 0 100% / 3px 26px,
+      linear-gradient(var(--accent), var(--accent)) 100% 100% / 26px 3px,
+      linear-gradient(var(--accent), var(--accent)) 100% 100% / 3px 26px;
+    background-repeat: no-repeat;
+    opacity: .5;
+  }
+  /* 遮罩：加载 / 未开启 */
+  .stage-mask {
+    position: absolute; inset: 0; z-index: 5;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; text-align: center; padding: 28px;
+    background: radial-gradient(600px 400px at 50% 40%, rgba(18,26,48,.55), rgba(7,11,22,.88));
+    overflow-y: auto;
+  }
+  .stage-mask.hidden { display: none; }
+  .mask-icon {
+    width: 76px; height: 76px; border-radius: 22px;
+    display: grid; place-items: center;
+    background: var(--panel-2);
+    border: 1px solid var(--line-strong);
+    box-shadow: 0 10px 30px rgba(0,0,0,.4);
+  }
+  .mask-icon svg { width: 38px; height: 38px; }
+  .mask-title { font-size: 19px; font-weight: 700; }
+  .mask-sub { font-size: 13px; color: var(--txt-1); line-height: 1.7; max-width: 420px; }
+  .mask-sub b { color: var(--accent); font-weight: 600; }
+  .btn-primary {
+    margin-top: 4px;
+    padding: 12px 30px;
+    border-radius: 12px;
+    font-size: 15px; font-weight: 700;
+    color: #06120e;
+    background: linear-gradient(135deg, #5af0bd, #2fd6a0);
+    box-shadow: 0 8px 24px rgba(62,230,176,.28);
+    transition: transform .15s, box-shadow .15s, opacity .15s;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 30px rgba(62,230,176,.38); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-primary:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
+  .spinner {
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 2px solid rgba(62,230,176,.25); border-top-color: var(--accent);
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .mask-loading { display: flex; align-items: center; gap: 10px; color: var(--txt-1); font-size: 14px; }
+  /* 状态条 */
+  .stage-bar {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 4;
+    display: flex; align-items: center; gap: 16px;
+    padding: 9px 16px;
+    font-size: 12px; color: var(--txt-1);
+    background: linear-gradient(transparent, rgba(5,8,16,.85));
+  }
+  .stage-bar .item { display: flex; align-items: center; gap: 6px; }
+  .stage-bar .pill {
+    padding: 2px 9px; border-radius: 99px;
+    background: rgba(255,255,255,.06); border: 1px solid var(--line);
+  }
+  .pill.ok { color: var(--accent); border-color: rgba(62,230,176,.35); background: var(--accent-dim); }
+  .pill.busy { color: var(--amber); border-color: rgba(255,183,77,.35); background: rgba(255,183,77,.10); }
+  .pill.err { color: var(--red); border-color: rgba(255,107,107,.35); background: rgba(255,107,107,.10); }
+  .stage-bar .spacer { flex: 1; }
+
+  /* ===== 控制面板 ===== */
+  .panel {
+    background: linear-gradient(180deg, var(--panel), #101830);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex; flex-direction: column; gap: 14px;
+    flex: none;
+  }
+  .seg {
+    display: grid; grid-template-columns: 1fr 1fr;
+    background: #0b1224; border: 1px solid var(--line);
+    border-radius: 11px; padding: 4px; gap: 4px;
+  }
+  .seg button {
+    padding: 8px 0; border-radius: 8px;
+    font-size: 13px; font-weight: 600; color: var(--txt-2);
+    transition: all .18s;
+  }
+  .seg button.active {
+    color: #06120e; background: linear-gradient(135deg, #5af0bd, #2fd6a0);
+  }
+  .seg button:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* 总数 */
+  .total-box {
+    background: radial-gradient(120px 90px at 50% 0%, rgba(62,230,176,.10), transparent 70%),
+                var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px 18px 14px;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .total-num {
+    font-family: var(--mono);
+    font-size: 56px; font-weight: 700; line-height: 1;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    transition: transform .18s;
+  }
+  .total-num.bump { transform: scale(1.07); }
+  .total-label { font-size: 13px; color: var(--txt-1); }
+  .total-label small { display: block; color: var(--txt-2); font-size: 11px; margin-top: 3px; }
+
+  /* 阈值 */
+  .ctl-label {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; color: var(--txt-1); margin-bottom: 8px;
+  }
+  .ctl-label .val { font-family: var(--mono); color: var(--accent); font-size: 14px; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 6px; border-radius: 99px;
+    background: linear-gradient(90deg, var(--accent) var(--fill,50%), #0b1224 var(--fill,50%));
+    outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; border: 3px solid var(--accent);
+    box-shadow: 0 2px 8px rgba(0,0,0,.5);
+    cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; border: 3px solid var(--accent); cursor: pointer;
+  }
+
+  /* 类别清单 */
+  .cat-block { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .cat-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; color: var(--txt-1); margin-bottom: 8px;
+  }
+  .cat-head .count { font-family: var(--mono); font-size: 12px; color: var(--txt-2); }
+  .cat-list {
+    flex: 1; min-height: 120px; max-height: 240px;
+    overflow-y: auto;
+    display: flex; flex-direction: column; gap: 6px;
+    padding-right: 4px;
+  }
+  .cat-list::-webkit-scrollbar { width: 6px; }
+  .cat-list::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 99px; }
+  .cat-item {
+    display: grid; grid-template-columns: 12px 1fr auto;
+    align-items: center; gap: 10px;
+    padding: 9px 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s, transform .1s;
+    user-select: none;
+  }
+  .cat-item:hover { border-color: var(--line-strong); background: #18233f; }
+  .cat-item.active {
+    border-color: var(--cat, var(--accent));
+    background: color-mix(in srgb, var(--cat, var(--accent)) 12%, var(--panel-2));
+  }
+  .cat-item:active { transform: scale(.985); }
+  .cat-dot { width: 10px; height: 10px; border-radius: 3px; background: var(--cat, var(--accent)); }
+  .cat-name { font-size: 13px; font-weight: 600; }
+  .cat-name small { display: block; font-size: 10.5px; color: var(--txt-2); font-weight: 400; }
+  .cat-num { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--txt-0); font-variant-numeric: tabular-nums; }
+  .cat-empty {
+    padding: 26px 14px; text-align: center;
+    color: var(--txt-2); font-size: 12.5px; line-height: 1.8;
+    border: 1px dashed var(--line-strong); border-radius: 10px;
+  }
+
+  /* 操作按钮 */
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .btn {
+    padding: 11px 8px; border-radius: 11px;
+    font-size: 13.5px; font-weight: 600;
+    min-height: 44px;
+    border: 1px solid var(--line-strong);
+    background: var(--panel-2);
+    color: var(--txt-0);
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    transition: all .15s;
+  }
+  .btn svg { width: 16px; height: 16px; flex: none; }
+  .btn:hover:not(:disabled) { border-color: var(--blue); background: #1a2547; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.warn:hover:not(:disabled) { border-color: var(--red); background: rgba(255,107,107,.10); }
+  .btn.primary-solid {
+    background: linear-gradient(135deg, #5af0bd, #2fd6a0);
+    color: #06120e; border-color: transparent;
+  }
+  .btn.primary-solid:hover:not(:disabled) { box-shadow: 0 6px 18px rgba(62,230,176,.3); border-color: transparent; }
+
+  /* ===== 底部提示 ===== */
+  footer {
+    padding: 12px 22px 16px;
+    display: flex; flex-wrap: wrap; gap: 8px 26px;
+    font-size: 12.5px; color: var(--txt-2);
+    border-top: 1px solid var(--line);
+  }
+  footer .tip { display: flex; align-items: center; gap: 8px; }
+  footer .tip::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--blue); flex: none;
+  }
+
+  /* ===== Toast ===== */
+  .toast-wrap {
+    position: fixed; top: 74px; left: 50%; transform: translateX(-50%);
+    z-index: 50; display: flex; flex-direction: column; gap: 8px; align-items: center;
+    pointer-events: none;
+  }
+  .toast {
+    padding: 10px 18px; border-radius: 10px;
+    background: var(--panel-2); border: 1px solid var(--line-strong);
+    font-size: 13px; color: var(--txt-0);
+    box-shadow: 0 10px 30px rgba(0,0,0,.4);
+    display: flex; align-items: center; gap: 8px;
+    animation: toast-in .25s ease;
+    max-width: 86vw;
+  }
+  .toast.err { border-color: rgba(255,107,107,.5); }
+  .toast.ok { border-color: rgba(62,230,176,.5); }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+
+  /* ===== 响应式 ===== */
+  /* 手机壳：桌面/平板打开时呈现居中手机画幅 */
+  @media (min-width: 641px) {
+    body {
+      margin-top: 22px; margin-bottom: 22px;
+      min-height: calc(100vh - 44px);
+      border-radius: 26px;
+      border: 1px solid var(--line-strong);
+    }
+    header { border-radius: 26px 26px 0 0; }
+    footer { border-radius: 0 0 26px 26px; }
+  }
+  @media (max-width: 640px) {
+    header { padding: 12px 14px; }
+    .header-note { display: none; }
+    main { padding: 12px; gap: 12px; }
+    .stage { min-height: 52vh; max-height: 64vh; }
+    .stage::before { inset: 10px; }
+    .stage-mask { padding: 18px 16px; gap: 11px; }
+    .mask-title { font-size: 17px; }
+    .mask-icon { width: 56px; height: 56px; }
+    .mask-sub { font-size: 13.5px; }
+    .btn-primary { padding: 11px 24px; font-size: 14px; min-height: 44px; }
+    .seg button { min-height: 44px; }
+    footer { padding: 12px 16px; gap: 6px 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand-mark" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#3ee6b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2.5" y="5" width="19" height="14" rx="3.2"/>
+      <path d="M7 5l1.4-2h7.2L17 5" stroke="#5b8cff"/>
+      <circle cx="12" cy="12" r="4.2" stroke="#eaf0ff"/>
+      <circle cx="12" cy="12" r="1" fill="#3ee6b0" stroke="none"/>
+    </svg>
+  </div>
+  <div class="brand">
+    <h1>点数相机</h1>
+    <p>对准一堆物品，自动数个数</p>
+  </div>
+  <div class="header-note">
+    <span class="dot" id="netDot"></span>
+    <span id="netText">正在连接识别模型…</span>
+  </div>
+</header>
+
+<main>
+  <!-- ===== 视频区 ===== -->
+  <section class="stage" id="stage">
+    <video id="cam" autoplay playsinline muted></video>
+    <canvas id="view"></canvas>
+
+    <!-- 遮罩：未开启 / 加载 -->
+    <div class="stage-mask" id="maskIdle">
+      <div class="mask-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#3ee6b0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke="#5b8cff"/>
+          <circle cx="12" cy="13" r="4"/>
+        </svg>
+      </div>
+      <div class="mask-title">把物品放进取景框</div>
+      <div class="mask-sub">开启摄像头后，<b>识别模型会实时数出画面里的物品</b>。支持人、水果、瓶子、杯子、书本、电子产品等 80 类常见物品。</div>
+      <button class="btn-primary" id="btnOpen">开启摄像头</button>
+    </div>
+
+    <div class="stage-mask hidden" id="maskLoad">
+      <div class="mask-loading">
+        <span class="spinner"></span>
+        <span id="maskLoadText">正在加载识别模型…</span>
+      </div>
+      <div class="mask-sub" style="max-width:380px">首次加载需下载识别模型，<b>约 10~30 秒</b>，请保持网络通畅。之后再次使用会快很多。</div>
+    </div>
+
+    <div class="stage-bar">
+      <span class="item pill" id="modePill">实时模式</span>
+      <span class="item"><span id="fpsText">— fps</span></span>
+      <span class="spacer"></span>
+      <span class="item pill busy" id="modelPill">模型加载中</span>
+      <span class="item pill" id="camPill">相机未开启</span>
+    </div>
+  </section>
+
+  <!-- ===== 控制面板 ===== -->
+  <aside class="panel">
+    <div class="seg" role="tablist" aria-label="检测模式">
+      <button id="modeLive" class="active">实时点数</button>
+      <button id="modeFreeze">定格清点</button>
+    </div>
+
+    <div class="total-box">
+      <div class="total-num" id="totalNum">—</div>
+      <div class="total-label">
+        个物品
+        <small>识别置信度 &ge; 阈值</small>
+      </div>
+    </div>
+
+    <div>
+      <div class="ctl-label">
+        <span>识别阈值</span>
+        <span class="val" id="thVal">50%</span>
+      </div>
+      <input type="range" id="thRange" min="20" max="90" step="1" value="50">
+    </div>
+
+    <div class="cat-block">
+      <div class="cat-head">
+        <span>类别清单</span>
+        <span class="count" id="catCount">点击类别可在画面中高亮</span>
+      </div>
+      <div class="cat-list" id="catList">
+        <div class="cat-empty">对准物品后，这里会列出识别到的类别与数量<br>点击某一类，画面中会高亮对应的物品</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn primary-solid" id="btnCamToggle" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        <span id="btnCamLabel">开启摄像头</span>
+      </button>
+      <button class="btn" id="btnFlip" disabled title="切换前后摄像头">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 19H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v4"/><path d="M15 19l3 3 3-3"/><path d="M18 22v-8"/></svg>
+        切换镜头
+      </button>
+      <button class="btn" id="btnFreeze" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="4" width="10" height="16" rx="2"/></svg>
+        <span id="btnFreezeLabel">定格画面</span>
+      </button>
+      <button class="btn warn" id="btnShot" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        保存截图
+      </button>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  <span class="tip">保持光线充足，让物品清晰可见</span>
+  <span class="tip">慢慢移动相机，读数会更稳定</span>
+  <span class="tip">物品太密集、互相遮挡时误差会变大，可调高阈值减少误报</span>
+  <span class="tip">识别模型在浏览器本地运行，画面不会上传</span>
+</footer>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ===== COCO 80 类中文映射 ===== */
+  var COCO_ZH = {
+    "person": "人", "bicycle": "自行车", "car": "汽车", "motorcycle": "摩托车",
+    "airplane": "飞机", "bus": "公交车", "train": "火车", "truck": "卡车",
+    "boat": "船", "traffic light": "红绿灯", "fire hydrant": "消防栓",
+    "stop sign": "停车标志", "parking meter": "停车计时器", "bench": "长椅",
+    "bird": "鸟", "cat": "猫", "dog": "狗", "horse": "马", "sheep": "羊",
+    "cow": "牛", "elephant": "大象", "bear": "熊", "zebra": "斑马",
+    "giraffe": "长颈鹿", "backpack": "背包", "umbrella": "雨伞",
+    "handbag": "手提包", "tie": "领带", "suitcase": "行李箱", "frisbee": "飞盘",
+    "skis": "滑雪板", "snowboard": "滑雪单板", "sports ball": "球类",
+    "kite": "风筝", "baseball bat": "棒球棒", "baseball glove": "棒球手套",
+    "skateboard": "滑板", "surfboard": "冲浪板", "tennis racket": "网球拍",
+    "bottle": "瓶子", "wine glass": "酒杯", "cup": "杯子", "fork": "叉子",
+    "knife": "刀", "spoon": "勺子", "bowl": "碗", "banana": "香蕉",
+    "apple": "苹果", "sandwich": "三明治", "orange": "橙子",
+    "broccoli": "西兰花", "carrot": "胡萝卜", "hot dog": "热狗",
+    "pizza": "披萨", "donut": "甜甜圈", "cake": "蛋糕", "chair": "椅子",
+    "couch": "沙发", "potted plant": "盆栽", "bed": "床", "dining table": "餐桌",
+    "toilet": "马桶", "tv": "电视", "laptop": "笔记本电脑", "mouse": "鼠标",
+    "remote": "遥控器", "keyboard": "键盘", "cell phone": "手机",
+    "microwave": "微波炉", "oven": "烤箱", "toaster": "烤面包机",
+    "sink": "水槽", "refrigerator": "冰箱", "book": "书", "clock": "时钟",
+    "vase": "花瓶", "scissors": "剪刀", "teddy bear": "泰迪熊",
+    "hair drier": "吹风机", "toothbrush": "牙刷"
+  };
+
+  /* ===== 状态 ===== */
+  var state = {
+    model: null,
+    modelLoading: false,
+    modelFailed: false,
+    stream: null,
+    videoReady: false,
+    mode: "live",           // live | freeze
+    threshold: 0.50,
+    activeCat: null,        // 高亮的类别名
+    detections: [],
+    lastTotal: null,
+    detecting: false,
+    detectTimer: null,
+    rafId: null,
+    deviceList: [],
+    deviceIdx: 0,
+    fps: 0,
+    shotCount: 0
+  };
+
+  /* ===== DOM ===== */
+  var $ = function (id) { return document.getElementById(id); };
+  var el = {
+    cam: $("cam"), view: $("view"), stage: $("stage"),
+    maskIdle: $("maskIdle"), maskLoad: $("maskLoad"), maskLoadText: $("maskLoadText"),
+    btnOpen: $("btnOpen"), btnCamToggle: $("btnCamToggle"), btnCamLabel: $("btnCamLabel"),
+    btnFlip: $("btnFlip"), btnFreeze: $("btnFreeze"), btnFreezeLabel: $("btnFreezeLabel"),
+    btnShot: $("btnShot"),
+    modeLive: $("modeLive"), modeFreeze: $("modeFreeze"),
+    totalNum: $("totalNum"), catList: $("catList"), catCount: $("catCount"),
+    thRange: $("thRange"), thVal: $("thVal"),
+    fpsText: $("fpsText"), modePill: $("modePill"),
+    modelPill: $("modelPill"), camPill: $("camPill"),
+    netDot: $("netDot"), netText: $("netText"), toastWrap: $("toastWrap")
+  };
+  var ctx = el.view.getContext("2d");
+
+  /* ===== 工具函数 ===== */
+  function toast(msg, type) {
+    var t = document.createElement("div");
+    t.className = "toast" + (type ? " " + type : "");
+    t.textContent = msg;
+    el.toastWrap.appendChild(t);
+    setTimeout(function () {
+      t.style.transition = "opacity .3s";
+      t.style.opacity = "0";
+      setTimeout(function () { t.remove(); }, 320);
+    }, 2600);
+  }
+
+  function catColor(cls) {
+    var h = 0, i;
+    for (i = 0; i < cls.length; i++) h = (h * 31 + cls.charCodeAt(i)) % 360;
+    return "hsl(" + h + ", 70%, 62%)";
+  }
+
+  function setModelPill(txt, kind) {
+    el.modelPill.textContent = txt;
+    el.modelPill.className = "item pill " + kind;
+  }
+  function setCamPill(txt, kind) {
+    el.camPill.textContent = txt;
+    el.camPill.className = "item pill " + kind;
+  }
+
+  /* ===== CDN 脚本加载（jsDelivr 优先，cdnjs 备用） ===== */
+  function loadScript(url) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = url;
+      s.onload = resolve;
+      s.onerror = function () { s.remove(); reject(new Error("load fail: " + url)); };
+      document.head.appendChild(s);
+    });
+  }
+  function loadFirst(list) {
+    var p = Promise.reject();
+    list.forEach(function (url) {
+      p = p.catch(function () { return loadScript(url); });
+    });
+    return p;
+  }
+  var TF_URLS = [
+    "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.22.0/tf.min.js"
+  ];
+  var COCO_URLS = [
+    "https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/coco-ssd/2.2.3/coco-ssd.min.js"
+  ];
+
+  /* ===== 模型加载 ===== */
+  function loadModel() {
+    state.modelLoading = true;
+    setModelPill("模型加载中", "busy");
+    el.netDot.style.background = "#ffb74d";
+    el.netText.textContent = "正在下载识别模型…";
+    el.maskLoadText.textContent = "正在下载识别模型…";
+    loadFirst(TF_URLS)
+      .then(function () { return loadFirst(COCO_URLS); })
+      .then(function () {
+        return cocoSsd.load({ base: "lite_mobilenet_v2" });
+      })
+      .then(function (model) {
+        state.model = model;
+        state.modelLoading = false;
+        setModelPill("识别模型就绪", "ok");
+        el.netDot.style.background = "#3ee6b0";
+        el.netText.textContent = "识别模型已就绪";
+        if (state.videoReady && state.mode === "live") startDetectLoop();
+        toast("识别模型就绪，开启摄像头即可点数", "ok");
+      })
+      .catch(function (err) {
+        state.modelLoading = false;
+        state.modelFailed = true;
+        setModelPill("模型加载失败", "err");
+        el.netDot.style.background = "#ff6b6b";
+        el.netText.textContent = "模型加载失败，请检查网络后刷新页面";
+        el.maskLoadText.textContent = "识别模型加载失败";
+        toast("识别模型加载失败：请检查网络连接后刷新页面", "err");
+      });
+  }
+
+  /* ===== 摄像头 ===== */
+  function camConstraints(deviceId) {
+    var v = { facingMode: "environment" };
+    if (deviceId) v = { deviceId: { exact: deviceId } };
+    return { audio: false, video: v };
+  }
+
+  function stopStream() {
+    if (state.stream) {
+      state.stream.getTracks().forEach(function (t) { t.stop(); });
+      state.stream = null;
+    }
+    el.cam.srcObject = null;
+    state.videoReady = false;
+    cancelAnimationFrame(state.rafId);
+    state.rafId = null;
+    clearTimeout(state.detectTimer);
+    state.detecting = false;
+    state.detections = [];
+    el.btnOpen.disabled = false;
+    el.btnOpen.textContent = "开启摄像头";
+    renderPanel();
+  }
+
+  function openCamera() {
+    return navigator.mediaDevices.getUserMedia(camConstraints(null))
+      .then(function (stream) {
+        state.stream = stream;
+        el.cam.srcObject = stream;
+        setCamPill("相机已连接", "ok");
+        return stream;
+      });
+  }
+
+  function refreshDevices() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return Promise.resolve([]);
+    return navigator.mediaDevices.enumerateDevices().then(function (devs) {
+      state.deviceList = devs.filter(function (d) { return d.kind === "videoinput"; });
+      el.btnFlip.disabled = state.deviceList.length < 2;
+      return state.deviceList;
+    }).catch(function () { return []; });
+  }
+
+  function switchCamera() {
+    if (state.deviceList.length < 2) return;
+    var wasLive = state.mode === "live";
+    stopStream();
+    state.deviceIdx = (state.deviceIdx + 1) % state.deviceList.length;
+    var dev = state.deviceList[state.deviceIdx];
+    navigator.mediaDevices.getUserMedia({ audio: false, video: { deviceId: { exact: dev.deviceId } } })
+      .then(function (stream) {
+        state.stream = stream;
+        el.cam.srcObject = stream;
+        setCamPill("相机已连接", "ok");
+        if (wasLive) { setMode("live"); } else { setMode("freeze"); }
+      })
+      .catch(function () {
+        setCamPill("相机不可用", "err");
+        toast("切换摄像头失败", "err");
+      });
+  }
+
+  /* ===== 模式 ===== */
+  function setMode(m) {
+    state.mode = m;
+    var live = m === "live";
+    el.modeLive.classList.toggle("active", live);
+    el.modeFreeze.classList.toggle("active", !live);
+    el.modePill.textContent = live ? "实时模式" : "定格模式";
+    el.btnFreezeLabel.textContent = live ? "定格画面" : "继续检测";
+    if (!state.videoReady) return;
+    if (live) {
+      el.cam.play().catch(function () {});
+      startDetectLoop();
+      renderPanel();
+    } else {
+      el.cam.pause();
+      clearTimeout(state.detectTimer);
+      state.detecting = false;
+    }
+  }
+
+  /* ===== 绘制循环 ===== */
+  function draw() {
+    state.rafId = requestAnimationFrame(draw);
+    var vw = el.cam.videoWidth, vh = el.cam.videoHeight;
+    if (!vw || !vh) return;
+    if (el.view.width !== vw) el.view.width = vw;
+    if (el.view.height !== vh) el.view.height = vh;
+    ctx.drawImage(el.cam, 0, 0, vw, vh);
+
+    var dets = state.detections;
+    if (!dets.length) return;
+    var selected = state.activeCat;
+
+    ctx.lineWidth = 2.5;
+    ctx.font = "12px " + getComputedStyle(document.body).getPropertyValue("--mono").trim() + ", monospace";
+    ctx.textBaseline = "top";
+
+    dets.forEach(function (d) {
+      var x = d.bbox[0], y = d.bbox[1], w = d.bbox[2], h = d.bbox[3];
+      var color = catColor(d.class);
+      var isSel = selected && d.class === selected;
+      if (selected && !isSel) {
+        ctx.strokeStyle = "rgba(148,163,200,.22)";
+        ctx.setLineDash([5, 5]);
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x, y, w, h);
+        ctx.setLineDash([]);
+        return;
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = isSel ? 4 : 2.5;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = isSel ? 12 : 5;
+      ctx.strokeRect(x, y, w, h);
+      ctx.shadowBlur = 0;
+
+      var label = (COCO_ZH[d.class] || d.class) + " " + Math.round(d.score * 100) + "%";
+      var tw = ctx.measureText(label).width;
+      var lx = x, ly = y > 20 ? y - 20 : y + h + 2;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(lx - 3, ly, tw + 8, 18, 4) : ctx.rect(lx - 3, ly, tw + 8, 18);
+      ctx.fill();
+      ctx.fillStyle = "#0a0f1e";
+      ctx.fillText(label, lx + 1, ly + 3);
+    });
+  }
+
+  /* ===== 检测循环 ===== */
+  function startDetectLoop() {
+    if (!state.model || !state.videoReady || state.mode !== "live") return;
+    if (state.detecting) return;
+    state.detecting = true;
+    tick();
+  }
+  function tick() {
+    if (!state.model || !state.videoReady || state.mode !== "live" || !state.stream) {
+      state.detecting = false;
+      return;
+    }
+    var t0 = performance.now();
+    state.model.detect(el.cam).then(function (preds) {
+      var dt = performance.now() - t0;
+      state.fps = dt > 0 ? Math.min(30, 1000 / dt) : 0;
+      el.fpsText.textContent = state.fps.toFixed(1) + " fps";
+      var th = state.threshold;
+      state.detections = preds
+        .filter(function (p) { return p.score >= th; })
+        .map(function (p) { return { class: p.class, score: p.score, bbox: p.bbox }; });
+      renderPanel();
+      state.detectTimer = setTimeout(tick, Math.max(60, 1000 / 10));
+    }).catch(function () {
+      state.detectTimer = setTimeout(tick, 200);
+    });
+  }
+
+  /* ===== 面板渲染 ===== */
+  function renderPanel() {
+    var dets = state.detections;
+    var total = dets.length;
+    el.totalNum.textContent = total > 0 ? total : (state.videoReady ? "0" : "—");
+    if (total !== state.lastTotal) {
+      state.lastTotal = total;
+      el.totalNum.classList.remove("bump");
+      void el.totalNum.offsetWidth;
+      el.totalNum.classList.add("bump");
+    }
+
+    var byCat = {};
+    dets.forEach(function (d) { byCat[d.class] = (byCat[d.class] || 0) + 1; });
+    var cats = Object.keys(byCat).map(function (c) {
+      return { cls: c, count: byCat[c], zh: COCO_ZH[c] || c };
+    }).sort(function (a, b) { return b.count - a.count || a.cls.localeCompare(b.cls); });
+
+    el.catCount.textContent = cats.length ? cats.length + " 类 · 点击高亮" : "点击类别可在画面中高亮";
+
+    if (!cats.length) {
+      el.catList.innerHTML = '<div class="cat-empty">' +
+        (state.videoReady
+          ? "画面里还没有识别到物品<br>试着把物品对准镜头、调低识别阈值"
+          : "对准物品后，这里会列出识别到的类别与数量<br>点击某一类，画面中会高亮对应的物品") +
+        "</div>";
+      return;
+    }
+
+    var html = "";
+    cats.forEach(function (c) {
+      var color = catColor(c.cls);
+      var act = state.activeCat === c.cls ? " active" : "";
+      html += '<div class="cat-item' + act + '" data-cls="' + c.cls + '" style="--cat:' + color + '">' +
+        '<span class="cat-dot"></span>' +
+        '<span class="cat-name">' + c.zh + '<small>' + c.cls + '</small></span>' +
+        '<span class="cat-num">' + c.count + '</span>' +
+        "</div>";
+    });
+    el.catList.innerHTML = html;
+
+    Array.prototype.forEach.call(el.catList.querySelectorAll(".cat-item"), function (item) {
+      item.addEventListener("click", function () {
+        var cls = item.getAttribute("data-cls");
+        state.activeCat = state.activeCat === cls ? null : cls;
+        renderPanel();
+      });
+    });
+  }
+
+  /* ===== 截图 ===== */
+  function saveShot() {
+    if (!state.videoReady) return;
+    var d = new Date();
+    var pad = function (n) { return String(n).padStart(2, "0"); };
+    var name = "点数_" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) +
+      "_" + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + ".png";
+    var a = document.createElement("a");
+    a.href = el.view.toDataURL("image/png");
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    state.shotCount++;
+    toast("已保存截图：" + name, "ok");
+  }
+
+  /* ===== 事件绑定 ===== */
+  el.btnOpen.addEventListener("click", function () {
+    if (state.stream) return;
+    el.btnOpen.disabled = true;
+    el.btnOpen.textContent = "正在请求摄像头…";
+    navigator.mediaDevices.getUserMedia(camConstraints(null))
+      .then(function (stream) {
+        state.stream = stream;
+        el.cam.srcObject = stream;
+        setCamPill("相机已连接", "ok");
+        el.maskIdle.classList.add("hidden");
+        el.maskLoad.classList.add("hidden");
+        refreshDevices();
+      })
+      .catch(function (err) {
+        el.btnOpen.disabled = false;
+        el.btnOpen.textContent = "开启摄像头";
+        handleCamError(err);
+      });
+  });
+
+  function handleCamError(err) {
+    var name = (err && err.name) || "";
+    if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+      toast("摄像头权限被拒绝：请在浏览器地址栏允许访问摄像头后重试", "err");
+    } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+      toast("未检测到摄像头设备，请确认设备已连接", "err");
+    } else if (name === "NotReadableError" || name === "TrackStartError") {
+      toast("摄像头被其他应用占用，请关闭占用程序后重试", "err");
+    } else if (name === "SecurityError") {
+      toast("当前环境不允许调用摄像头：请用 Chrome/Edge 打开，或通过 https/localhost 访问", "err");
+    } else {
+      toast("无法开启摄像头：" + (err.message || "未知错误"), "err");
+    }
+    setCamPill("相机不可用", "err");
+  }
+
+  el.btnCamToggle.addEventListener("click", function () {
+    if (state.stream) {
+      stopStream();
+      el.btnCamLabel.textContent = "开启摄像头";
+      setCamPill("相机未开启", "");
+      el.maskIdle.classList.remove("hidden");
+      el.totalNum.textContent = "—";
+      state.lastTotal = null;
+      renderPanel();
+      el.btnFreeze.disabled = true;
+      el.btnShot.disabled = true;
+    } else {
+      el.btnCamToggle.disabled = true;
+      el.btnCamLabel.textContent = "正在连接…";
+      navigator.mediaDevices.getUserMedia(camConstraints(null))
+        .then(function (stream) {
+          state.stream = stream;
+          el.cam.srcObject = stream;
+          setCamPill("相机已连接", "ok");
+          el.maskIdle.classList.add("hidden");
+          el.btnCamLabel.textContent = "关闭摄像头";
+          el.btnFreeze.disabled = false;
+          el.btnShot.disabled = false;
+          el.btnFlip.disabled = state.deviceList.length < 2;
+          refreshDevices();
+        })
+        .catch(function (err) {
+          el.btnCamToggle.disabled = false;
+          el.btnCamLabel.textContent = "开启摄像头";
+          handleCamError(err);
+        });
+    }
+  });
+
+  el.btnFlip.addEventListener("click", switchCamera);
+
+  el.btnFreeze.addEventListener("click", function () {
+    setMode(state.mode === "live" ? "freeze" : "live");
+  });
+
+  el.btnShot.addEventListener("click", saveShot);
+
+  el.modeLive.addEventListener("click", function () { setMode("live"); });
+  el.modeFreeze.addEventListener("click", function () { setMode("freeze"); });
+
+  el.thRange.addEventListener("input", function () {
+    state.threshold = parseInt(el.thRange.value, 10) / 100;
+    el.thVal.textContent = el.thRange.value + "%";
+    el.thRange.style.setProperty("--fill", ((state.threshold - 0.2) / (0.9 - 0.2) * 100) + "%");
+  });
+
+  /* ===== 视频就绪后的初始化 ===== */
+  el.cam.addEventListener("loadedmetadata", function () {
+    if (!el.cam.videoWidth) return;
+    state.videoReady = true;
+    el.view.width = el.cam.videoWidth;
+    el.view.height = el.cam.videoHeight;
+    if (!state.rafId) draw();
+    if (state.model && state.mode === "live") startDetectLoop();
+    el.btnCamToggle.disabled = false;
+    el.btnCamLabel.textContent = "关闭摄像头";
+    el.btnFreeze.disabled = false;
+    el.btnShot.disabled = false;
+    el.btnOpen.disabled = true;
+    el.btnOpen.textContent = "摄像头已开启";
+  });
+
+  /* ===== 初始化 ===== */
+  (function init() {
+    refreshDevices();
+    loadModel();
+  })();
+})();
+</script>
+</body>
+</html>
