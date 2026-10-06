@@ -47,6 +47,33 @@
   button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
   ::selection { background: rgba(62,230,176,.25); }
 
+  /* ===== 通用 ===== */
+  .hidden { display: none !important; }
+
+  /* 拍摄按钮（取景时显示） */
+  .btn-shoot {
+    position: absolute; left: 50%; bottom: 58px; transform: translateX(-50%);
+    z-index: 6;
+    display: flex; align-items: center; gap: 8px;
+    padding: 13px 28px;
+    border-radius: 99px;
+    font-size: 15px; font-weight: 700;
+    color: #06120e;
+    background: linear-gradient(135deg, #5af0bd, #2fd6a0);
+    box-shadow: 0 10px 30px rgba(62,230,176,.35);
+    transition: transform .15s;
+  }
+  .btn-shoot:hover { transform: translateX(-50%) translateY(-1px); }
+  .btn-shoot svg { width: 18px; height: 18px; }
+
+  /* 拍照计数提示条 */
+  .hint-bar {
+    font-size: 12.5px; color: var(--amber);
+    display: flex; align-items: center; gap: 7px;
+    background: rgba(255,183,77,.10); border: 1px solid rgba(255,183,77,.3);
+    padding: 9px 12px; border-radius: 10px;
+  }
+
   /* ===== 顶栏 ===== */
   header {
     display: flex; align-items: center; gap: 12px;
@@ -278,6 +305,8 @@
     user-select: none;
   }
   .cat-item:hover { border-color: var(--line-strong); background: #18233f; }
+  .cat-item.static { cursor: default; }
+  .cat-item.static:hover { border-color: var(--line); background: var(--panel-2); }
   .cat-item.active {
     border-color: var(--cat, var(--accent));
     background: color-mix(in srgb, var(--cat, var(--accent)) 12%, var(--panel-2));
@@ -426,6 +455,11 @@
       <div class="mask-sub" style="max-width:380px">首次加载需下载识别模型，<b>约 10~30 秒</b>，请保持网络通畅。之后再次使用会快很多。</div>
     </div>
 
+    <button class="btn-shoot hidden" id="btnShoot" aria-label="拍摄并计数">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="4.5"/></svg>
+      拍摄并计数
+    </button>
+
     <div class="stage-bar">
       <span class="item pill" id="modePill">实时模式</span>
       <span class="item"><span id="fpsText">— fps</span></span>
@@ -437,9 +471,9 @@
 
   <!-- ===== 控制面板 ===== -->
   <aside class="panel">
-    <div class="seg" role="tablist" aria-label="检测模式">
+    <div class="seg" role="tablist" aria-label="计数方式">
       <button id="modeLive" class="active">实时点数</button>
-      <button id="modeFreeze">定格清点</button>
+      <button id="modePhoto">拍照计数</button>
     </div>
 
     <div class="total-box">
@@ -449,6 +483,8 @@
         <small>识别置信度 &ge; 阈值</small>
       </div>
     </div>
+
+    <div class="hint-bar hidden" id="hintEdit">点击照片上的物品：点一下添加标记，再点标记可删除</div>
 
     <div>
       <div class="ctl-label">
@@ -468,7 +504,7 @@
       </div>
     </div>
 
-    <div class="actions">
+    <div class="actions" id="actionsLive">
       <button class="btn primary-solid" id="btnCamToggle" disabled>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
         <span id="btnCamLabel">开启摄像头</span>
@@ -477,14 +513,29 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 19H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v4"/><path d="M15 19l3 3 3-3"/><path d="M18 22v-8"/></svg>
         切换镜头
       </button>
-      <button class="btn" id="btnFreeze" disabled>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="4" width="10" height="16" rx="2"/></svg>
-        <span id="btnFreezeLabel">定格画面</span>
-      </button>
       <button class="btn warn" id="btnShot" disabled>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
         保存截图
       </button>
+    </div>
+    <div class="actions hidden" id="actionsPhoto">
+      <button class="btn primary-solid" id="btnTake">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="4.5"/></svg>
+        <span id="btnTakeLabel">拍摄</span>
+      </button>
+      <button class="btn" id="btnUpload">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 8l5-5 5 5"/><path d="M12 3v12"/></svg>
+        上传照片
+      </button>
+      <button class="btn warn" id="btnShotPhoto" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        保存截图
+      </button>
+      <button class="btn hidden" id="btnClear">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        清除标记
+      </button>
+      <input type="file" id="filePick" accept="image/*" hidden>
     </div>
   </aside>
 </main>
@@ -536,10 +587,12 @@
     modelFailed: false,
     stream: null,
     videoReady: false,
-    mode: "live",           // live | freeze
+    mode: "live",           // live | photo
+    photoTaken: false,      // 照片是否已定格/上传
     threshold: 0.50,
     activeCat: null,        // 高亮的类别名
     detections: [],
+    marks: [],              // 拍照模式下的标记（检测框 + 手动标记）
     lastTotal: null,
     detecting: false,
     detectTimer: null,
@@ -556,9 +609,12 @@
     cam: $("cam"), view: $("view"), stage: $("stage"),
     maskIdle: $("maskIdle"), maskLoad: $("maskLoad"), maskLoadText: $("maskLoadText"),
     btnOpen: $("btnOpen"), btnCamToggle: $("btnCamToggle"), btnCamLabel: $("btnCamLabel"),
-    btnFlip: $("btnFlip"), btnFreeze: $("btnFreeze"), btnFreezeLabel: $("btnFreezeLabel"),
-    btnShot: $("btnShot"),
-    modeLive: $("modeLive"), modeFreeze: $("modeFreeze"),
+    btnFlip: $("btnFlip"), btnShot: $("btnShot"),
+    btnShotPhoto: $("btnShotPhoto"), btnTake: $("btnTake"), btnTakeLabel: $("btnTakeLabel"),
+    btnUpload: $("btnUpload"), btnClear: $("btnClear"), btnShoot: $("btnShoot"),
+    filePick: $("filePick"), hintEdit: $("hintEdit"),
+    modeLive: $("modeLive"), modePhoto: $("modePhoto"),
+    actionsLive: $("actionsLive"), actionsPhoto: $("actionsPhoto"),
     totalNum: $("totalNum"), catList: $("catList"), catCount: $("catCount"),
     thRange: $("thRange"), thVal: $("thVal"),
     fpsText: $("fpsText"), modePill: $("modePill"),
@@ -667,6 +723,8 @@
     }
     el.cam.srcObject = null;
     state.videoReady = false;
+    state.photoTaken = false;
+    state.marks = [];
     cancelAnimationFrame(state.rafId);
     state.rafId = null;
     clearTimeout(state.detectTimer);
@@ -674,6 +732,8 @@
     state.detections = [];
     el.btnOpen.disabled = false;
     el.btnOpen.textContent = "开启摄像头";
+    el.btnShoot.classList.add("hidden");
+    el.hintEdit.classList.add("hidden");
     renderPanel();
   }
 
@@ -707,7 +767,7 @@
         state.stream = stream;
         el.cam.srcObject = stream;
         setCamPill("相机已连接", "ok");
-        if (wasLive) { setMode("live"); } else { setMode("freeze"); }
+        if (wasLive) { setMode("live"); } else { setMode("photo"); }
       })
       .catch(function () {
         setCamPill("相机不可用", "err");
@@ -718,21 +778,132 @@
   /* ===== 模式 ===== */
   function setMode(m) {
     state.mode = m;
-    var live = m === "live";
-    el.modeLive.classList.toggle("active", live);
-    el.modeFreeze.classList.toggle("active", !live);
-    el.modePill.textContent = live ? "实时模式" : "定格模式";
-    el.btnFreezeLabel.textContent = live ? "定格画面" : "继续检测";
-    if (!state.videoReady) return;
-    if (live) {
-      el.cam.play().catch(function () {});
-      startDetectLoop();
-      renderPanel();
-    } else {
-      el.cam.pause();
+    el.modeLive.classList.toggle("active", m === "live");
+    el.modePhoto.classList.toggle("active", m === "photo");
+    el.modePill.textContent = m === "live" ? "实时模式" : "拍照计数";
+    el.actionsLive.classList.toggle("hidden", m !== "live");
+    el.actionsPhoto.classList.toggle("hidden", m === "live");
+
+    if (m === "live") {
       clearTimeout(state.detectTimer);
       state.detecting = false;
+      enterLiveView();
+      if (state.stream) el.cam.play().catch(function () {});
+      if (state.videoReady && state.model) startDetectLoop();
+    } else {
+      clearTimeout(state.detectTimer);
+      state.detecting = false;
+      enterPhotoView();
     }
+  }
+
+  function enterLiveView() {
+    state.photoTaken = false;
+    state.marks = [];
+    el.btnShoot.classList.add("hidden");
+    el.hintEdit.classList.add("hidden");
+    el.btnShotPhoto.disabled = !state.videoReady;
+    el.btnClear.classList.add("hidden");
+    el.btnTakeLabel.textContent = "拍摄";
+    if (!state.rafId) draw();
+    renderPanel();
+  }
+
+  function enterPhotoView() {
+    state.photoTaken = false;
+    state.marks = [];
+    state.detections = [];
+    state.activeCat = null;
+    el.hintEdit.classList.add("hidden");
+    el.btnTakeLabel.textContent = "拍摄";
+    el.btnShotPhoto.disabled = true;
+    el.btnClear.classList.add("hidden");
+    el.btnShoot.classList.toggle("hidden", !state.videoReady);
+    if (state.stream) el.cam.play().catch(function () {});
+    if (!state.rafId) draw();
+    renderPanel();
+  }
+
+  /* ===== 拍照计数 ===== */
+  function takePhoto() {
+    if (!state.videoReady || !el.cam.videoWidth) {
+      toast("请先开启摄像头，或直接上传照片", "err");
+      return;
+    }
+    el.cam.pause();
+    cancelAnimationFrame(state.rafId);
+    state.rafId = null;
+    state.photoTaken = true;
+    state.marks = [];
+    el.btnShoot.classList.add("hidden");
+    el.btnTakeLabel.textContent = "重新拍摄";
+    el.btnShotPhoto.disabled = false;
+    el.btnClear.classList.remove("hidden");
+    el.hintEdit.classList.remove("hidden");
+    el.modePill.textContent = "拍照计数";
+    runDetectOnCanvas();
+  }
+
+  function runDetectOnCanvas() {
+    if (!state.model) {
+      toast("识别模型未就绪，无法自动计数", "err");
+      drawMarks();
+      renderPanel();
+      return;
+    }
+    toast("正在识别照片中的物品…");
+    state.model.detect(el.view).then(function (preds) {
+      var th = state.threshold;
+      state.marks = preds
+        .filter(function (p) { return p.score >= th; })
+        .map(function (p) {
+          return { bbox: p.bbox, cls: p.class, score: p.score, manual: false };
+        });
+      drawMarks();
+      renderPanel();
+      toast("识别完成，可点击画面手动添加或删除标记", "ok");
+    }).catch(function () {
+      drawMarks();
+      renderPanel();
+      toast("自动识别未完成，可手动点击标记", "err");
+    });
+  }
+
+  function drawMarks() {
+    if (!state.photoTaken) return;
+    var vw = el.view.width, vh = el.view.height;
+    if (!vw || !vh) return;
+    ctx.lineWidth = 2.5;
+    ctx.font = "13px " + getComputedStyle(document.body).getPropertyValue("--mono").trim() + ", monospace";
+    ctx.textBaseline = "top";
+    state.marks.forEach(function (m, i) {
+      var x = m.bbox[0], y = m.bbox[1], w = m.bbox[2], h = m.bbox[3];
+      var color = m.manual ? "#5b8cff" : catColor(m.cls);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = m.manual ? 3 : 2.5;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 6;
+      if (m.manual) {
+        var r = w / 2;
+        ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.arc(x + r, y + r, r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else {
+        ctx.strokeRect(x, y, w, h);
+      }
+      ctx.shadowBlur = 0;
+      var label = m.manual ? ("手动 " + (i + 1)) : ((COCO_ZH[m.cls] || m.cls) + " " + (i + 1));
+      var tw = ctx.measureText(label).width;
+      var lx = x, ly = y > 20 ? y - 20 : y + h + 2;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(lx - 3, ly, tw + 8, 18, 4) : ctx.rect(lx - 3, ly, tw + 8, 18);
+      ctx.fill();
+      ctx.fillStyle = "#0a0f1e";
+      ctx.fillText(label, lx + 1, ly + 3);
+    });
   }
 
   /* ===== 绘制循环 ===== */
@@ -813,6 +984,10 @@
 
   /* ===== 面板渲染 ===== */
   function renderPanel() {
+    if (state.mode === "photo") {
+      renderPhotoPanel();
+      return;
+    }
     var dets = state.detections;
     var total = dets.length;
     el.totalNum.textContent = total > 0 ? total : (state.videoReady ? "0" : "—");
@@ -861,9 +1036,56 @@
     });
   }
 
+  /* 拍照模式面板 */
+  function renderPhotoPanel() {
+    if (!state.photoTaken) {
+      el.totalNum.textContent = "—";
+      el.catCount.textContent = "拍摄或上传照片后开始计数";
+      el.catList.innerHTML = '<div class="cat-empty">对准货品后点击「拍摄并计数」<br>或直接「上传照片」，从相册选择货品图片<br><br>自动识别物品并统计数量，<br>也可以在照片上逐个点击手动标记</div>';
+      return;
+    }
+    var total = state.marks.length;
+    el.totalNum.textContent = total;
+    if (total !== state.lastTotal) {
+      state.lastTotal = total;
+      el.totalNum.classList.remove("bump");
+      void el.totalNum.offsetWidth;
+      el.totalNum.classList.add("bump");
+    }
+
+    var byCat = {};
+    state.marks.forEach(function (m) {
+      var k = m.manual ? "手动标记" : (COCO_ZH[m.cls] || m.cls);
+      byCat[k] = (byCat[k] || 0) + 1;
+    });
+    var cats = Object.keys(byCat).map(function (c) {
+      return { cls: c, count: byCat[c], zh: c };
+    }).sort(function (a, b) { return b.count - a.count; });
+
+    el.catCount.textContent = total ? total + " 个标记 · 点击画面可编辑" : "点击画面添加标记";
+
+    if (!cats.length) {
+      el.catList.innerHTML = '<div class="cat-empty">这张照片里没有识别到物品<br>点击画面上的物品，逐个手动标记计数</div>';
+      return;
+    }
+    var html = "";
+    cats.forEach(function (c) {
+      var color = c.cls === "手动标记" ? "#5b8cff" : catColor(c.cls);
+      html += '<div class="cat-item static" style="--cat:' + color + '">' +
+        '<span class="cat-dot"></span>' +
+        '<span class="cat-name">' + c.zh + "</span>" +
+        '<span class="cat-num">' + c.count + "</span>" +
+        "</div>";
+    });
+    el.catList.innerHTML = html;
+  }
+
   /* ===== 截图 ===== */
   function saveShot() {
-    if (!state.videoReady) return;
+    if (!el.view.width || !el.view.height) {
+      toast("还没有可保存的画面", "err");
+      return;
+    }
     var d = new Date();
     var pad = function (n) { return String(n).padStart(2, "0"); };
     var name = "点数_" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) +
@@ -924,7 +1146,6 @@
       el.totalNum.textContent = "—";
       state.lastTotal = null;
       renderPanel();
-      el.btnFreeze.disabled = true;
       el.btnShot.disabled = true;
     } else {
       el.btnCamToggle.disabled = true;
@@ -936,7 +1157,6 @@
           setCamPill("相机已连接", "ok");
           el.maskIdle.classList.add("hidden");
           el.btnCamLabel.textContent = "关闭摄像头";
-          el.btnFreeze.disabled = false;
           el.btnShot.disabled = false;
           el.btnFlip.disabled = state.deviceList.length < 2;
           refreshDevices();
@@ -951,14 +1171,80 @@
 
   el.btnFlip.addEventListener("click", switchCamera);
 
-  el.btnFreeze.addEventListener("click", function () {
-    setMode(state.mode === "live" ? "freeze" : "live");
-  });
-
   el.btnShot.addEventListener("click", saveShot);
+  el.btnShotPhoto.addEventListener("click", saveShot);
 
   el.modeLive.addEventListener("click", function () { setMode("live"); });
-  el.modeFreeze.addEventListener("click", function () { setMode("freeze"); });
+  el.modePhoto.addEventListener("click", function () { setMode("photo"); });
+
+  /* 拍照计数交互 */
+  el.btnTake.addEventListener("click", function () {
+    if (state.photoTaken) { enterPhotoView(); } else { takePhoto(); }
+  });
+  el.btnShoot.addEventListener("click", function () { takePhoto(); });
+  el.btnUpload.addEventListener("click", function () { el.filePick.click(); });
+  el.btnClear.addEventListener("click", function () {
+    state.marks = [];
+    drawMarks();
+    renderPanel();
+    toast("已清除全部标记，可重新点击添加", "ok");
+  });
+
+  /* 照片上手动点选标记 */
+  el.view.addEventListener("click", function (e) {
+    if (state.mode !== "photo" || !state.photoTaken) return;
+    var rect = el.view.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    var x = (e.clientX - rect.left) * el.view.width / rect.width;
+    var y = (e.clientY - rect.top) * el.view.height / rect.height;
+    var hit = -1;
+    state.marks.forEach(function (m, i) {
+      if (x >= m.bbox[0] && x <= m.bbox[0] + m.bbox[2] &&
+          y >= m.bbox[1] && y <= m.bbox[1] + m.bbox[3]) hit = i;
+    });
+    if (hit >= 0) {
+      state.marks.splice(hit, 1);
+      toast("已删除 1 个标记，剩余 " + state.marks.length, "ok");
+    } else {
+      state.marks.push({ bbox: [x - 30, y - 30, 60, 60], cls: "手动标记", score: 1, manual: true });
+      toast("已添加标记，当前共 " + state.marks.length + " 个", "ok");
+    }
+    drawMarks();
+    renderPanel();
+  });
+
+  /* 上传照片 */
+  el.filePick.addEventListener("change", function () {
+    var f = el.filePick.files && el.filePick.files[0];
+    if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      var img = new Image();
+      img.onload = function () {
+        var w = img.width, h = img.height, maxW = 1600;
+        if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+        el.view.width = w;
+        el.view.height = h;
+        ctx.drawImage(img, 0, 0, w, h);
+        state.photoTaken = true;
+        state.marks = [];
+        if (state.stream) el.cam.pause();
+        cancelAnimationFrame(state.rafId);
+        state.rafId = null;
+        el.btnShoot.classList.add("hidden");
+        el.btnTakeLabel.textContent = "重新拍摄";
+        el.btnShotPhoto.disabled = false;
+        el.btnClear.classList.remove("hidden");
+        el.hintEdit.classList.remove("hidden");
+        el.modePill.textContent = "拍照计数";
+        runDetectOnCanvas();
+      };
+      img.onerror = function () { toast("图片读取失败，请换一张试试", "err"); };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(f);
+    el.filePick.value = "";
+  });
 
   el.thRange.addEventListener("input", function () {
     state.threshold = parseInt(el.thRange.value, 10) / 100;
@@ -976,8 +1262,9 @@
     if (state.model && state.mode === "live") startDetectLoop();
     el.btnCamToggle.disabled = false;
     el.btnCamLabel.textContent = "关闭摄像头";
-    el.btnFreeze.disabled = false;
     el.btnShot.disabled = false;
+    el.btnShotPhoto.disabled = state.mode !== "photo";
+    el.btnShoot.classList.toggle("hidden", state.mode !== "photo");
     el.btnOpen.disabled = true;
     el.btnOpen.textContent = "摄像头已开启";
   });
@@ -992,6 +1279,7 @@
     el.cam.style.height = "1px";
     el.cam.style.opacity = "0";
     el.cam.style.pointerEvents = "none";
+    setMode("live");
     refreshDevices();
     loadModel();
   })();
